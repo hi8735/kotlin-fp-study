@@ -1,9 +1,6 @@
 package chpater4
 
-import chapter3.Cons
-import chapter3.Nil
-import chapter3.foldRight
-import chapter3.List
+import chapter3.*
 
 //4.1
 fun <A, B> Option<A>.map(f: (A) -> B): Option<B> = when (this) {
@@ -32,8 +29,8 @@ fun <A> Option<A>.filter(f: (A) -> Boolean): Option<A> = when (this) {
 }
 
 //4.2
-fun variance(xs: List<Double>): Option<Double> =
-    mean(xs).flatMap{ m -> mean(xs.map { x -> Math.pow(x - m, 2.0) }) }
+fun variance(xs: FList<Double>): Option<Double> =
+    mean(xs).flatMap { m -> mean(xs.map { x -> Math.pow(x - m, 2.0) }) }
 
 //4.3
 fun <A, B, C> map2(
@@ -43,17 +40,19 @@ fun <A, B, C> map2(
 ): Option<C> = oa.flatMap { a -> ob.map { b -> f(a, b) } }
 
 //4.4
-fun <A> sequence(
-    xa: List<Option<A>>
-): Option<List<A>> = xa.foldRight
+fun <A, B> sequence(
+    xs: FList<Option<A>>
+): Option<FList<A>> = xs.foldRight(Some(FList.of())) { a, acc ->
+    map2(a, acc) { b, list -> Cons(b, list) }
+}
 
 //4.5
-fun <A, B> traverse(
-    xa: List<A>,
+fun<A,B> traverse(
+    xa: FList<A>,
     f: (A) -> Option<B>
-): Option<List<B>> =
-    if(xa.contains(None)) None
-    else Some(xa.map { x -> f(x).getOrElse { throw IllegalStateException() } })
+): Option<FList<B>> = xa.foldRight(Some(FList.of())) { a, acc ->
+    map2(f(a), acc) { b, list -> Cons(b, list) }
+}
 
 //4.6
 fun <E, A, B> Either<E, A>.map(f: (A) -> B): Either<E, B> = when (this) {
@@ -61,6 +60,36 @@ fun <E, A, B> Either<E, A>.map(f: (A) -> B): Either<E, B> = when (this) {
     is Right -> Right(f(this.value))
 }
 
+fun <E, A, B> Either<E, A>.flatMap(f: (A) -> Either<E, B>): Either<E, B> = when (this) {
+    is Left -> this
+    is Right -> f(this.value)
+}
+
+fun <E, A, B, C> map2(
+    ea: Either<E, A>,
+    eb: Either<E, B>,
+    f: (A, B) -> C
+): Either<E, C> = ea.flatMap { a -> eb.map { b -> f(a, b) } }
+
+//4.7
+fun <E, A> sequence(
+    xs: FList<Either<E, A>>
+): Either<E, FList<A>> = xs.foldRight(Right(FList.of())) { a, acc ->
+    map2(a, acc) { b, list -> Cons(b, list) }
+}
+
+fun <E, A> traverse(
+    xs: FList<A>,
+    f: (A) -> Either<E, A>
+): Either<E, FList<A>> = xs.foldRight(Right(FList.of())) { a, acc ->
+    map2(f(a), acc) { b, list -> Cons(b, list) }
+}
+
+//4.8
+sealed class Partial<out A, out B>
+
+data class Failures<out A>(val get: FList<A>) : Partial<A, Nothing>()
+data class Success<out B>(val get: B) : Partial<Nothing, B>()
 
 sealed class Option<out A>
 
@@ -68,20 +97,24 @@ data class Some<out A>(val get:A) : Option<A>()
 
 object None : Option<Nothing>()
 
-fun mean(xs: List<Double>): Option<Double> =
-    if(xs.isEmpty()) None
-    else Some(xs.sum() / xs.size)
+fun mean(xs: FList<Double>): Option<Double> =
+    if (xs.isEmpty()) None
+    else Some(xs.foldRight(0.0) { a, b -> a + b } / xs.length())
 
 sealed class Either<out E, out A>
 data class Left<out E>(val value: E) : Either<E, Nothing>()
 data class Right<out A>(val value: A) : Either<Nothing, A>()
-inline fun <A, B> List<A>.map(crossinline f: (A) -> B): List<B> = foldRight(this, List.of()) { a, ls -> Cons(f(a), ls)}
-fun <A, B> List<A>.foldRight(z: B, f: (A, B) -> B): B = when (this) {
+
+inline fun <A, B> FList<A>.map(crossinline f: (A) -> B): FList<B> = foldRight(this, FList.of()) { a, ls -> Cons(f(a), ls)}
+
+fun <A, B> FList<A>.foldRight(z: B, f: (A, B) -> B): B = when (this) {
     is Nil -> z
     is Cons -> f(this.head, foldRight(this.tail, z, f))
 }
 
-fun <A> List<A>.isEmpty(): Boolean = when (this) {
+fun <A> FList<A>.isEmpty(): Boolean = when (this) {
     is Nil -> true
     is Cons -> false
 }
+
+fun <A> FList<A>.length(): Int = foldRight(0) { _, b -> b + 1 }
